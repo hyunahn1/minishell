@@ -1,0 +1,3 @@
+Command 0:
+  Basic Command and Options:
+    cat
