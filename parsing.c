@@ -1,9 +1,5 @@
 #include "minishell.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 void ft_free(char **tokens)
 {
     if (!tokens)
@@ -115,25 +111,46 @@ void add_command(t_pipe **command_list, t_pipe *command)
     }
 }
 
-// 옵션을 인자에 추가
+// 가정: `new_option` 함수는 주어진 `data`로 t_option 구조체를 생성합니다.
+
 void add_option(t_arg *arg, char *data)
 {
     t_option *new_opt = new_option(data);
     if (!new_opt)
         return;
-    
-    if (!arg->option)
+
+    // Check if data starts with `$` (variable)
+    if (ft_strncmp(data, "$", 1) == 0)
     {
-        arg->option = new_opt;
+        arg->variable = ft_strdup(data);
     }
-    else
+    // Check if data is enclosed in single or double quotes (argument)
+    else if ((data[0] == '\'' && data[ft_strlen(data) - 1] == '\'') || 
+             (data[0] == '\"' && data[ft_strlen(data) - 1] == '\"'))
     {
-        t_option *temp = arg->option;
-        while (temp->next)
-            temp = temp->next;
-        temp->next = new_opt;
+        arg->arg = ft_strdup(data);
+    }
+    // Check if data ends with ".txt" (filename)
+    else if (strlen(data) >= 4 && ft_strncmp(data + ft_strlen(data) - 4, ".txt", 4) == 0)
+    {
+        arg->filename = ft_strdup(data);
+    }
+    else  // If none of the above, treat it as a regular option
+    {
+        if (!arg->option)
+        {
+            arg->option = new_opt;
+        }
+        else
+        {
+            t_option *temp = arg->option;
+            while (temp->next)
+                temp = temp->next;
+            temp->next = new_opt;
+        }
     }
 }
+
 
 void parse_and_store(char *input, t_pipe **command_list)
 {
@@ -151,10 +168,10 @@ void parse_and_store(char *input, t_pipe **command_list)
         while (tokens[j])
         {
             // 리다이렉션 기호를 확인
-            if ((ft_strncmp(tokens[j], ">", strlen(">")) == 0) ||
-                (ft_strncmp(tokens[j], "<", strlen("<")) == 0) ||
-                (ft_strncmp(tokens[j], ">>", strlen(">>")) == 0) ||
-                (ft_strncmp(tokens[j], "<<", strlen("<<")) == 0))
+            if ((ft_strncmp(tokens[j], ">", 1) == 0) ||
+                (ft_strncmp(tokens[j], "<", 1) == 0) ||
+                (ft_strncmp(tokens[j], ">>", 2) == 0) ||
+                (ft_strncmp(tokens[j], "<<", 2) == 0))
             {
                 // 리다이렉션 기호 다음에 파일명이 있는지 확인
                 if (tokens[j + 1])
@@ -296,7 +313,6 @@ void print_commands(t_pipe *command_list)
     }
 }
 
-// 메모리 해제 함수
 void free_commands(t_pipe *command_list)
 {
     while (command_list)
@@ -309,36 +325,81 @@ void free_commands(t_pipe *command_list)
             t_s_cmd *simple_cmd = cmd->simple_cmd;
             if (simple_cmd)
             {
+                // Free the basic command
                 free(simple_cmd->basic_command);
-                t_option *opt = simple_cmd->arg->option;
-                while (opt)
+
+                // Free each field in t_arg
+                if (simple_cmd->arg)
                 {
-                    t_option *temp_opt = opt;
-                    opt = opt->next;
-                    free(temp_opt->data);
-                    free(temp_opt);
+                    if (simple_cmd->arg->filename)
+                        free(simple_cmd->arg->filename);
+                    if (simple_cmd->arg->variable)
+                        free(simple_cmd->arg->variable);
+                    if (simple_cmd->arg->arg)
+                        free(simple_cmd->arg->arg);
+                    
+                    // Free options list in t_arg
+                    t_option *opt = simple_cmd->arg->option;
+                    while (opt)
+                    {
+                        t_option *temp_opt = opt;
+                        opt = opt->next;
+                        free(temp_opt->data);  // Free each option's data
+                        free(temp_opt);
+                    }
+
+                    // Free the t_arg itself
+                    free(simple_cmd->arg);
                 }
+                
+                // Free the simple command structure
                 free(simple_cmd);
             }
 
+            // Free each redirection in the command
             t_rdts *redir = cmd->redirections;
             while (redir)
             {
                 t_rdts *temp_redir = redir;
                 redir = redir->next;
+                
+                // Free redirection fields
                 free(temp_redir->redirect);
                 if (temp_redir->arg)
                 {
-                    free(temp_redir->arg->filename);
-                    free(temp_redir->arg->variable);
-                    free(temp_redir->arg->arg);
+                    if (temp_redir->arg->filename)
+                        free(temp_redir->arg->filename);
+                    if (temp_redir->arg->variable)
+                        free(temp_redir->arg->variable);
+                    if (temp_redir->arg->arg)
+                        free(temp_redir->arg->arg);
+                    
+                    // Free options list in redirection's t_arg
+                    t_option *opt = temp_redir->arg->option;
+                    while (opt)
+                    {
+                        t_option *temp_opt = opt;
+                        opt = opt->next;
+                        free(temp_opt->data);
+                        free(temp_opt);
+                    }
+
+                    // Free the t_arg structure itself
                     free(temp_redir->arg);
                 }
+                
+                // Free the redirection structure
                 free(temp_redir);
             }
+
+            // Free the command structure
             free(cmd);
         }
+
+        // Move to next command in the pipe list
         command_list = command_list->next;
+
+        // Free the pipe structure
         free(temp_pipe);
     }
 }
